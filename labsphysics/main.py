@@ -86,30 +86,40 @@ class dados:
 
 
     def adicionar(self, nome, unidades, expressao):
-            simbolos = {key: sp.Symbol(key) for key in self.chave.keys()}
-            expressao = expressao.replace("np", "sp")
-            expressao_simbolica = eval(expressao, {"math": math, "np": np, "sp": sp}, simbolos)
+        simbolos = {key: sp.Symbol(key) for key in self.chave.keys()}
+        
+        # Define symbols for uncertainty associated with each variable
+        simbolos_incerteza = {f"u_{key}": sp.Symbol(f"u_{key}") for key in self.chave.keys()}
+        
+        expressao = expressao.replace("np", "sp")
+        
+                
+        expressao_simbolica = eval(expressao, {"math": math, "np": np, "sp": sp}, {**simbolos, **simbolos_incerteza})
             
-            derivadas_parciais = {key: expressao_simbolica.diff(simbolos[key]) for key in simbolos}
+        derivadas_parciais = {key: expressao_simbolica.diff(simbolos[key]) for key in simbolos}
             
-            incerteza = 0
-            for key, value in derivadas_parciais.items():
-                incerteza += (value * self.chave[key][2]) ** 2
+        incerteza = 0
+        for key, value in derivadas_parciais.items():
+            incerteza += (value * simbolos_incerteza[f"u_{key}"]) ** 2
             
-            incerteza = sp.sqrt(incerteza)
-            
-            valores_simbolicos = expressao_simbolica.subs({simbolos[key]: self.chave[key][0] for key in simbolos})
-            print(f"Incerteza de {nome}: {incerteza}")
-            incerteza_numerica = incerteza.evalf(subs={sp.Symbol(key): self.chave[key][0] for key in simbolos})
+        incerteza = sp.sqrt(incerteza)
+        
+        valores_simbolicos = expressao_simbolica.subs({simbolos[key]: self.chave[key][0] for key in simbolos})
+        print(f"Incerteza de {nome}: {incerteza}")
+        expressao = expressao.replace("sp","np")
+        expressao_simbolica = eval(expressao, {"math": math, "np": np, "sp": sp}, {**simbolos, **simbolos_incerteza})
+    
+    # Define a function to calculate uncertainty based on symbolic expression
+        incerteza_func = sp.lambdify(list(simbolos_incerteza.values()), expressao_simbolica)
+        incertezas = [self.chave[key][2] for key in self.chave.keys()]
 
+        incerteza_numerica = incerteza_func(*incertezas)
+        valores_numericos = eval(expressao, {"math":math, "np":np}, {key: value[0] for key, value in self.chave.items()})
 
-            expressao = expressao.replace("sp","np")
-            valores_numericos = eval(expressao, {"math":math, "np":np}, {key: value[0] for key, value in self.chave.items()})
+        self.df[nome] = valores_numericos
+        self.chave[nome] = (valores_numericos, unidades, incerteza_numerica)
 
-            self.df[nome] = valores_numericos
-            self.chave[nome] = (valores_numericos, unidades, incerteza_numerica)
-
-            return valores_numericos, valores_simbolicos, incerteza_numerica  # Retornar os valores numéricos, a expressão simbólica e os valores numéricos da incerteza
+        return valores_numericos, valores_simbolicos, incerteza_numerica  # Retornar os valores numéricos, a expressão simbólica e os valores numéricos da incerteza
 
 
     def __str__(self) -> str:
