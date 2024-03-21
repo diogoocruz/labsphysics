@@ -3,6 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import statsmodels.api as sm
 import math
+import sympy as sp
 
 
 class dados:
@@ -83,13 +84,36 @@ class dados:
         plt.legend()
         plt.show()
 
+
     def adicionar(self, nome, unidades, expressao):
-        valores = eval(expressao, {"math":math, "np":np}, {key: value[0] for key, value in self.chave.items()})
-        self.df[nome] = valores
-        self.chave[nome] = (valores, unidades, None)
+            simbolos = {key: sp.Symbol(key) for key in self.chave.keys()}
+            expressao = expressao.replace("np", "sp")
+            expressao_simbolica = eval(expressao, {"math": math, "np": np, "sp": sp}, simbolos)
+            
+            derivadas_parciais = {key: expressao_simbolica.diff(simbolos[key]) for key in simbolos}
+            
+            incerteza = 0
+            for key, value in derivadas_parciais.items():
+                incerteza += (value * self.chave[key][2]) ** 2
+            
+            incerteza = sp.sqrt(incerteza)
+            
+            valores_simbolicos = expressao_simbolica.subs({simbolos[key]: self.chave[key][0] for key in simbolos})
+            print(f"Incerteza de {nome}: {incerteza}")
+            incerteza_numerica = incerteza.evalf(subs={sp.Symbol(key): self.chave[key][0] for key in simbolos})
+
+
+            expressao = expressao.replace("sp","np")
+            valores_numericos = eval(expressao, {"math":math, "np":np}, {key: value[0] for key, value in self.chave.items()})
+
+            self.df[nome] = valores_numericos
+            self.chave[nome] = (valores_numericos, unidades, incerteza_numerica)
+
+            return valores_numericos, valores_simbolicos, incerteza_numerica  # Retornar os valores numéricos, a expressão simbólica e os valores numéricos da incerteza
+
 
     def __str__(self) -> str:
         string_representation = ""
         for k in self.chave.keys():
-            string_representation += f"{k} ({self.chave[k][1]})\n"
+            string_representation += f"{k} ({self.chave[k][1]})\n {self.chave[k][2]}\n"
         return string_representation
